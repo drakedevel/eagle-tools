@@ -11,6 +11,7 @@ setup(
     install_requires=[
         'click>=6.7',
         'defusedxml>=0.5.0',
+        'tabulate>=0.7.7',
     ],
     entry_points={
         'console_scripts': [

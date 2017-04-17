@@ -1,7 +1,8 @@
 import click
+from tabulate import tabulate
 from typing import TextIO
 
-from .parser import Library, parse_file, _text_at
+from .parser import Library, Schematic, parse_file, _text_at
 
 
 @click.group()
@@ -38,7 +39,7 @@ def _summary(desc: str) -> str:
 @cli.command()
 @click.argument('in_f', type=click.File('r'))
 def list(in_f: TextIO) -> None:
-    """List the contents of a file"""
+    """List the contents of a library"""
     parsed = parse_file(in_f)
     if not isinstance(parsed, Library):
         raise NotImplementedError("Only libraries are supported at this time")
@@ -73,3 +74,26 @@ def list(in_f: TextIO) -> None:
                     for tech_name in sorted(var.technologies.keys()):
                         formatted = _format_dev(dev_name, var_name, tech_name)
                         print("        {}".format(formatted))
+
+
+@cli.command()
+@click.option('--format', type=click.Choice(['table', 'machine']),
+              default='table', help="Data output format.")
+@click.argument('sch_f', type=click.File('r'))
+def parts(format: str, sch_f: TextIO) -> None:
+    """List used parts/libraries in a schematic"""
+    parsed = parse_file(sch_f)
+    if not isinstance(parsed, Schematic):
+        raise ValueError("This command requires a schematic file")
+
+    data = []
+    for name, part in sorted(parsed.parts.items()):
+        data.append((name, part.library, _format_dev(part.device, part.variant,
+                                                     part.technology)))
+    if format == 'table':
+        print(tabulate(data, headers=['Part', 'Library', 'Device']))
+    elif format == 'machine':
+        for line in data:
+            print(' '.join(line))
+    else:
+        raise ValueError(format)
