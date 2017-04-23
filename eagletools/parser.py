@@ -1,4 +1,4 @@
-from typing import Any, Callable, Dict, Iterable, TYPE_CHECKING, TextIO, TypeVar, Union
+from typing import Callable, Dict, TYPE_CHECKING, TextIO, Tuple, TypeVar, Union
 from xml.etree.ElementTree import ElementTree, Element
 
 if TYPE_CHECKING:
@@ -139,17 +139,28 @@ class Schematic:
         return cls(description, libraries, parts)
 
 
-def parse_file(source: TextIO) -> Union[Board, Library, Schematic]:
+def load_file(source: TextIO) -> Tuple[str, ElementTree, Element]:
     et = parse_xml_et(source)
     if et.getroot().tag != 'eagle':
         raise ValueError('Not an EAGLE file')
     board = et.find('./drawing/board')
     if board:
-        return Board.from_et(board)
+        return 'board', et, board
     library = et.find('./drawing/library')
     if library:
-        return Library.from_et(library)
+        return 'library', et, library
     schematic = et.find('./drawing/schematic')
     if schematic:
-        return Schematic.from_et(schematic)
+        return 'schematic', et, schematic
     raise ValueError('Corrupt or unhandled EAGLE file')
+
+
+def parse_file(source: TextIO) -> Union[Board, Library, Schematic]:
+    type_, et, element = load_file(source)
+    if type_ == 'board':
+        return Board.from_et(element)
+    if type_ == 'library':
+        return Library.from_et(element)
+    if type_ == 'schematic':
+        return Schematic.from_et(element)
+    assert False, "load_file returned unknown type"

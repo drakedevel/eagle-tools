@@ -1,13 +1,10 @@
 import click
+import os
 from tabulate import tabulate
 from typing import TextIO
+from xml.etree.ElementTree import Element, ElementTree, SubElement
 
-from .parser import Library, Schematic, parse_file, _text_at
-
-
-@click.group()
-def cli() -> None:
-    pass
+from .parser import Library, Schematic, load_file, parse_file, _text_at
 
 
 def _format_dev(dev: str, var: str=None, tech: str=None) -> str:
@@ -36,9 +33,38 @@ def _summary(desc: str) -> str:
     return ''
 
 
+@click.group()
+def cli() -> None:
+    pass
+
+
 @cli.command()
+@click.option('--output', '-o', type=click.Path(exists=True, file_okay=False),
+              default='.', help="Output directory (default current)")
 @click.argument('in_f', type=click.File('r'))
-def list(in_f: TextIO) -> None:
+def extract(output: str, in_f: TextIO) -> None:
+    """Extract libraries from a board or schematic"""
+    # Load and validate input file
+    type_, et, element = load_file(in_f)
+    if type_ not in ('board', 'schematic'):
+        raise ValueError("This command requires board or schematic files")
+    version = et.getroot().attrib['version']
+
+    # Extract each library
+    for lib_elt in element.iterfind('./libraries/library'):
+        root = Element('eagle', attrib={'version': version})
+        drawing = SubElement(root, 'drawing')
+        library = SubElement(drawing, 'library')
+        library.extend(lib_elt)
+
+        et = ElementTree(root)
+        et.write(os.path.join(output, '{}.lbr'.format(lib_elt.attrib['name'])),
+                 encoding='utf-8')
+
+
+@cli.command(name='list')
+@click.argument('in_f', type=click.File('r'))
+def cmd_list(in_f: TextIO) -> None:
     """List the contents of a library"""
     parsed = parse_file(in_f)
     if not isinstance(parsed, Library):
