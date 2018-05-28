@@ -1,10 +1,20 @@
 import click
 import os
+import re
 from tabulate import tabulate
-from typing import TextIO
+from typing import TextIO, Tuple
 from xml.etree.ElementTree import Element, ElementTree, SubElement
 
-from .parser import Library, Schematic, load_file, parse_file, _text_at
+from hwpy.value import Value
+
+from .parser import Library, Part, Schematic, load_file, parse_file, _text_at
+
+
+def _part_sort_key(value: Tuple[str, Part]) -> Tuple[str, int]:
+    match = re.fullmatch(r'([A-Z]+)([0-9]+)', value[0])
+    if match:
+        return match.group(1), int(match.group(2))
+    return value[0], 0
 
 
 def _format_dev(dev: str, var: str=None, tech: str=None) -> str:
@@ -113,11 +123,22 @@ def parts(format: str, sch_f: TextIO) -> None:
         raise ValueError("This command requires a schematic file")
 
     data = []
-    for name, part in sorted(parsed.parts.items()):
+    for name, part in sorted(parsed.parts.items(), key=_part_sort_key):
+        tech = parsed.libraries[part.library].devices[part.device].variants[part.variant].technologies[part.technology]
+        attrs = tech.attributes.copy()
+        attrs.update(part.attributes)
+        value = part.value
+        if value:
+            try:
+                value = Value.parse(value).to_str(True)
+            except ValueError:
+                pass
+
         data.append((name, part.library, _format_dev(part.device, part.variant,
-                                                     part.technology)))
+                                                     part.technology),
+                     value or '', attrs.get('MPN', '')))
     if format == 'table':
-        print(tabulate(data, headers=['Part', 'Library', 'Device']))
+        print(tabulate(data, headers=['Part', 'Library', 'Device', 'Value', 'MPN']))
     elif format == 'machine':
         for line in data:
             print(' '.join(line))

@@ -1,4 +1,4 @@
-from typing import Callable, Dict, TYPE_CHECKING, TextIO, Tuple, TypeVar, Union
+from typing import Callable, Dict, Optional, TYPE_CHECKING, TextIO, Tuple, TypeVar, Union
 from xml.etree.ElementTree import ElementTree, Element
 
 if TYPE_CHECKING:
@@ -10,13 +10,11 @@ else:
 T = TypeVar('T')
 
 
-def _parse_bool(value: str, none_value: bool=None) -> bool:
+def _parse_bool(value: str) -> bool:
     if value == 'no':
         return False
     if value == 'yes':
         return True
-    if value is None and none_value is not None:
-        return none_value
     raise ValueError(value)
 
 
@@ -25,7 +23,8 @@ def _parse_map(element: Element, query: str, parser: Callable[[Element], T]) \
     return {e.attrib['name']: parser(e) for e in element.iterfind(query)}
 
 
-def _text_at(element: Element, query: str, none_ok: bool=True) -> str:
+def _text_at(element: Element, query: str, none_ok: bool=True) \
+        -> Optional[str]:
     found = element.find(query)
     if found is None:
         if none_ok:
@@ -40,24 +39,38 @@ class Board:
         raise NotImplementedError()
 
 
+class Technology:
+    def __init__(self, name: str, attributes: Dict[str, str]) -> None:
+        self.name = name
+        self.attributes = attributes
+
+    @classmethod
+    def from_et(cls, element: Element) -> 'Technology':
+        name = element.attrib['name']
+        attributes = _parse_map(element, './attribute',
+                                lambda e: e.attrib['value'])
+        return cls(name, attributes)
+
+
 class Variant:
-    def __init__(self, name: str, package: str,
-                 technologies: Dict[str, Element]) -> None:
+    def __init__(self, name: str, package: Optional[str],
+                 technologies: Dict[str, Technology]) -> None:
         self.name = name
         self.package = package
         self.technologies = technologies
 
     @classmethod
     def from_et(cls, element: Element) -> 'Variant':
-        name = element.attrib.get('name')
+        name = element.attrib['name']
         package = element.attrib.get('package')
-        techs = _parse_map(element, './technologies/technology', lambda e: e)
+        techs = _parse_map(element, './technologies/technology',
+                           Technology.from_et)
         return cls(name, package, techs)
 
 
 class Device:
     def __init__(self, name: str, prefix: str, uservalue: bool,
-                 description: str, gates: Dict[str, Element],
+                 description: Optional[str], gates: Dict[str, Element],
                  variants: Dict[str, Variant]) -> None:
         self.name = name
         self.prefix = prefix
@@ -69,8 +82,8 @@ class Device:
     @classmethod
     def from_et(cls, element: Element) -> 'Device':
         name = element.attrib['name']
-        prefix = element.attrib.get('prefix')
-        uservalue = _parse_bool(element.attrib.get('uservalue'), False)
+        prefix = element.attrib.get('prefix', '')
+        uservalue = _parse_bool(element.attrib.get('uservalue', 'no'))
         description = _text_at(element, './description')
         gates = _parse_map(element, './gates/gate', lambda e: e)
         variants = {}
@@ -81,7 +94,7 @@ class Device:
 
 
 class Library:
-    def __init__(self, name: str, description: str,
+    def __init__(self, name: Optional[str], description: Optional[str],
                  packages: Dict[str, Element],
                  symbols: Dict[str, Element],
                  devices: Dict[str, Device]) -> None:
@@ -93,6 +106,7 @@ class Library:
 
     @classmethod
     def from_et(cls, element: Element) -> 'Library':
+        # Per DTD, name is only present within board/schematic files
         name = element.attrib.get('name')
         description = _text_at(element, './description')
         packages = _parse_map(element, './packages/package', lambda e: e)
@@ -104,13 +118,15 @@ class Library:
 
 class Part:
     def __init__(self, name: str, library: str, device: str,
-                 variant: str, technology: str, value: str) -> None:
+                 variant: str, technology: str, value: Optional[str],
+                 attributes: Dict[str, str]) -> None:
         self.name = name
         self.library = library
         self.device = device
         self.variant = variant
         self.technology = technology
         self.value = value
+        self.attributes = attributes
 
     @classmethod
     def from_et(cls, element: Element) -> 'Part':
@@ -120,11 +136,14 @@ class Part:
         variant = element.attrib['device']
         technology = element.attrib.get('technology', '')
         value = element.attrib.get('value')
-        return cls(name, library, device, variant, technology, value)
+        attributes = _parse_map(element, './attribute',
+                                lambda e: e.attrib['value'])
+        return cls(name, library, device, variant, technology, value,
+                   attributes)
 
 
 class Schematic:
-    def __init__(self, description: str,
+    def __init__(self, description: Optional[str],
                  libraries: Dict[str, Library],
                  parts: Dict[str, Part]) -> None:
         self.description = description
