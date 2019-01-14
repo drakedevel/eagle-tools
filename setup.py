@@ -1,4 +1,4 @@
-from setuptools import find_packages, setup
+from setuptools import setup
 setup(
     name='eagletools',
     description='Tools for manipulating PCB files created by EAGLE CAD',
@@ -7,7 +7,8 @@ setup(
     author_email='adrake@adrake.org',
     license='Apache-2.0',
 
-    packages=find_packages(),
+    packages=['eagletools'],
+    package_data={'eagletools': ['py.typed']},
     install_requires=[
         'click>=6.7',
         'defusedxml>=0.5.0',
@@ -18,5 +19,6 @@ setup(
         'console_scripts': [
             'eagletools = eagletools.cli:cli'
         ],
-    }
+    },
+    zip_safe=False,
 )
