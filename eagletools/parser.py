@@ -1,4 +1,4 @@
-from typing import Callable, Dict, Optional, TYPE_CHECKING, TextIO, Tuple, TypeVar, Union
+from typing import Callable, Dict, NamedTuple, Optional, TYPE_CHECKING, TextIO, Tuple, TypeVar, Union
 from xml.etree.ElementTree import ElementTree, Element
 
 if TYPE_CHECKING:
@@ -10,12 +10,31 @@ else:
 T = TypeVar('T')
 
 
+class LibraryRef(NamedTuple):
+    name: str
+    urn: str
+
+    def __str__(self) -> str:
+        if self.urn:
+            return f'{self.name} ({self.urn})'
+        return self.name
+
+
 def _parse_bool(value: str) -> bool:
     if value == 'no':
         return False
     if value == 'yes':
         return True
     raise ValueError(value)
+
+
+def _parse_library_map(element: Element, query: str) \
+        -> Dict[LibraryRef, 'Library']:
+    result = {}
+    for e in element.iterfind(query):
+        lib = Library.from_et(e)
+        result[lib.ref] = lib
+    return result
 
 
 def _parse_map(element: Element, query: str, parser: Callable[[Element], T]) \
@@ -94,11 +113,13 @@ class Device:
 
 
 class Library:
-    def __init__(self, name: Optional[str], description: Optional[str],
+    def __init__(self, name: Optional[str], urn: str,
+                 description: Optional[str],
                  packages: Dict[str, Element],
                  symbols: Dict[str, Element],
                  devices: Dict[str, Device]) -> None:
         self.name = name
+        self.urn = urn
         self.description = description
         self.packages = packages
         self.symbols = symbols
@@ -108,20 +129,28 @@ class Library:
     def from_et(cls, element: Element) -> 'Library':
         # Per DTD, name is only present within board/schematic files
         name = element.attrib.get('name')
+        urn = element.attrib.get('urn', '')
         description = _text_at(element, './description')
         packages = _parse_map(element, './packages/package', lambda e: e)
         symbols = _parse_map(element, './symbols/symbol', lambda e: e)
         devices = _parse_map(element, './devicesets/deviceset',
                              Device.from_et)
-        return cls(name, description, packages, symbols, devices)
+        return cls(name, urn, description, packages, symbols, devices)
+
+    @property
+    def ref(self) -> LibraryRef:
+        if self.name is None:
+            raise AttributeError("Can't get ref of Library with no name")
+        return LibraryRef(self.name, self.urn)
 
 
 class Part:
-    def __init__(self, name: str, library: str, device: str,
+    def __init__(self, name: str, library: str, library_urn: str, device: str,
                  variant: str, technology: str, value: Optional[str],
                  attributes: Dict[str, str]) -> None:
         self.name = name
         self.library = library
+        self.library_urn = library_urn
         self.device = device
         self.variant = variant
         self.technology = technology
@@ -132,19 +161,24 @@ class Part:
     def from_et(cls, element: Element) -> 'Part':
         name = element.attrib['name']
         library = element.attrib['library']
+        library_urn = element.attrib.get('library_urn', '')
         device = element.attrib['deviceset']
         variant = element.attrib['device']
         technology = element.attrib.get('technology', '')
         value = element.attrib.get('value')
         attributes = _parse_map(element, './attribute',
                                 lambda e: e.attrib['value'])
-        return cls(name, library, device, variant, technology, value,
-                   attributes)
+        return cls(name, library, library_urn, device, variant, technology,
+                   value, attributes)
+
+    @property
+    def library_ref(self) -> LibraryRef:
+        return LibraryRef(self.library, self.library_urn)
 
 
 class Schematic:
     def __init__(self, description: Optional[str],
-                 libraries: Dict[str, Library],
+                 libraries: Dict[LibraryRef, Library],
                  parts: Dict[str, Part]) -> None:
         self.description = description
         self.libraries = libraries
@@ -153,7 +187,7 @@ class Schematic:
     @classmethod
     def from_et(cls, element: Element) -> 'Schematic':
         description = _text_at(element, './description')
-        libraries = _parse_map(element, './libraries/library', Library.from_et)
+        libraries = _parse_library_map(element, './libraries/library')
         parts = _parse_map(element, './parts/part', Part.from_et)
         return cls(description, libraries, parts)
 

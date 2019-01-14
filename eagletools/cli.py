@@ -124,7 +124,7 @@ def parts(format: str, sch_f: TextIO) -> None:
 
     data = []
     for name, part in sorted(parsed.parts.items(), key=_part_sort_key):
-        tech = parsed.libraries[part.library].devices[part.device].variants[part.variant].technologies[part.technology]
+        tech = parsed.libraries[part.library_ref].devices[part.device].variants[part.variant].technologies[part.technology]
         attrs = tech.attributes.copy()
         attrs.update(part.attributes)
         value = part.value
@@ -134,8 +134,8 @@ def parts(format: str, sch_f: TextIO) -> None:
             except ValueError:
                 pass
 
-        data.append((name, part.library, _format_dev(part.device, part.variant,
-                                                     part.technology),
+        data.append((name, str(part.library_ref), _format_dev(part.device, part.variant,
+                                                              part.technology),
                      value or '', attrs.get('MPN', '')))
     if format == 'table':
         print(tabulate(data, headers=['Part', 'Library', 'Device', 'Value', 'MPN']))
